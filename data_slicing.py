@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Oct 27 17:56:34 2015
-
-@author: bolaka
-"""
-
 from __future__ import division
 from collections import defaultdict
 from glob import glob
@@ -22,6 +15,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
 import pandas as pd
 import numpy as np
 from sklearn import preprocessing
@@ -87,7 +81,6 @@ def evalerror(preds, dtrain):
     return 'error', -err
 
 def evalmetric(preds, labels):
-#    print confusion_matrix(preds, labels) 
     n = len(preds)
     diff = (labels - preds) * 5
     
@@ -203,7 +196,7 @@ mapped_resi = dictMap0(major_resi)
 combined['Residence_Region'] = combined['Residence_Region'].map( mapped_resi ).astype(int)
 
 ## Transformations to correct skewness...
-#combined.babies = combined.babies.apply(np.sqrt) 
+#combined.TVhours = combined.TVhours.apply(np.sqrt) 
     
 #    combined.Loan_Amount_Applied = combined.Loan_Amount_Applied.apply(np.sqrt)
 #    
@@ -218,10 +211,10 @@ combined['Residence_Region'] = combined['Residence_Region'].map( mapped_resi ).a
 ## removing outliers    
 #combined = removeOutliers(combined)
 
-## sum up missing    
-#combined['missingness'] = combined.apply(sumMissing, 1)     
+# sum up missing    
+combined['missingness'] = combined.apply(sumMissing, 1)     
 
-#combined = combined.loc[ combined.Alcohol_Consumption == -99 ]
+#combined = combined.loc[ combined.Alcohol_Consumption == 2 ]
 #combined = combined[(combined.Divorce==1) & (combined.Widowed==2)]
 
 #combined.loc[ combined.TVhours > 18, 'TVhours' ] = None
@@ -242,7 +235,8 @@ test = test.drop(['Happy'], axis=1, inplace=False)
 #       'Unemployed10', 'Var1', 'Var2', , 'WorkStatus', 'babies',
 #       'preteen', 'teens', 'Residence_Region'
 features = ['Divorce', 'Alcohol_Consumption', 'Education', 'Engagement_Religion', 'Score', 'TVhours', 'income', 
-            'Gender', 'babies', 'teens', 'preteen', 'Var2', 'Var1', 'Unemployed10', 'WorkStatus', 'Residence_Region', 'Widowed'] 
+            'Gender', 'babies', 'teens', 'preteen', 'Var2', 'Var1', 'Unemployed10', 'WorkStatus', 
+            'Residence_Region', 'Widowed'] 
 
 # setup parameters for xgboost
 param = {}
@@ -275,12 +269,6 @@ gbc = []
 ada = []
 xgbo = []
 fold = 0
-
-# Iterate through folds
-importance_cv = pd.Series(data=None, index=f)
-
-from sklearn.metrics import confusion_matrix
-
 for validation_index, train_index in skf:
 #for train_index, validation_index in skf:
 #validation_index, train_index = list(skf)[0]  
@@ -297,11 +285,10 @@ for validation_index, train_index in skf:
     score_rf = evalmetric(val_preds, y_validate)
 #    print('Random Forest classifier = ' + str(score_rf))
 
-    gbc_model = GradientBoostingClassifier(learning_rate=0.01, n_estimators=500, max_depth=4, verbose=0)
+    gbc_model = GradientBoostingClassifier(learning_rate=0.01, n_estimators=100, max_depth=4, verbose=0)
     gbc_model.fit(x_train, y_train)    
     val_preds = gbc_model.predict(x_validate)
     score_gbc = evalmetric(val_preds, y_validate)
-    print confusion_matrix(y_validate, val_preds)
 #    print('Gradient Boosting classifier = ' + str(score_gbc))
     
     ada_model = AdaBoostClassifier(learning_rate=0.01, n_estimators=100)
@@ -321,10 +308,7 @@ for validation_index, train_index in skf:
     watchlist = [ (dtrain,'train'), (dval, 'test') ]
     num_round = 500
     clf = xgb.train(param, dtrain, num_round, watchlist, early_stopping_rounds=30, feval=evalerror, verbose_eval=False)
-#    clf_best = xgb.train(param, dtrain, (clf.best_iteration+1))
-#    val_preds = clf.predict(dval)
-#    score_xg = evalmetric(val_preds, y_validate)
-#    print('XGBoost classifier = ' + str(np.absolute(clf.best_score)) + ' == ' + str(score_xg) + ' rounds\n')
+#    print('XGBoost classifier = ' + str(np.absolute(clf.best_score)) + ' @ ' + str(clf.best_iteration) + ' rounds\n')
     
     # scores
     rf.append(score_rf)    
@@ -332,16 +316,14 @@ for validation_index, train_index in skf:
     ada.append(score_ada)
     xgbo.append(np.absolute(clf.best_score))
     
-#     fold feature importance
-    mapFeat = dict(zip(["f"+str(i) for i in range(len(f))],f))
-    ts = pd.Series(clf.get_fscore())
-    ts.index = ts.reset_index()['index'].map(mapFeat)
-    importance_cv = importance_cv.add(ts, fill_value=0)
-    
+    # fold feature importance
+#    mapFeat = dict(zip(["f"+str(i) for i in range(len(f))],f))
+#    ts = pd.Series(clf.get_fscore())
+#    ts.index = ts.reset_index()['index'].map(mapFeat)
+#    
+#    # plot the feature importance accross folds
+#    ts.dropna().order().plot(kind="barh", title=("features importance")) # [-15:]
     fold += 1
-
-# plot the feature importance accross folds
-importance_cv.dropna().order().plot(kind="barh", title=("features importance accross 10-folds")) # [-15:]
 
 print('\n=========== overall eval metric for ' + str(k_folds) + ' folds ===========')      
 
